@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { generateResponse, type GenerateResponseInput, type GenerateResponseOutput } from '@/ai/flows/generate-response';
 import ConversationSettings from '@/components/girlfriend-gpt/ConversationSettings';
 import ConversationLog from '@/components/girlfriend-gpt/ConversationLog';
@@ -10,7 +10,7 @@ import { type Message } from '@/components/girlfriend-gpt/ChatBubble';
 import useSpeechRecognition from '@/hooks/use-speech-recognition';
 import useSpeechSynthesis from '@/hooks/use-speech-synthesis';
 import { useToast } from '@/hooks/use-toast';
-import { Bot } from 'lucide-react'; // Using Bot icon for app title
+import { Bot } from 'lucide-react';
 
 export default function GirlfriendGPTPage() {
   const [girlfriendName, setGirlfriendName] = useState<string>('Ava');
@@ -65,57 +65,72 @@ export default function GirlfriendGPTPage() {
     if (isRecording) {
       stopListening();
     } else {
-      if (isAiSpeaking) cancelSpeaking(); // Stop AI speaking if user wants to talk
+      if (isAiSpeaking) cancelSpeaking(); 
       startListening(language);
     }
   }, [isRecording, startListening, stopListening, language, isSpeechRecognitionSupported, toast, isAiSpeaking, cancelSpeaking]);
 
-  // Process recognized speech
+  const prevIsRecording = useRef(isRecording);
+
   useEffect(() => {
-    const trimmedTranscript = transcript.trim();
+    // This effect runs when `isRecording` changes or other stable dependencies change.
+    // It does NOT run when *only* `transcript` changes.
 
-    if (!isRecording && trimmedTranscript) {
-      addMessage('user', trimmedTranscript);
-      setIsLoadingAiResponse(true);
+    if (prevIsRecording.current && !isRecording) {
+      // This block executes exactly ONCE when `isRecording` transitions from true to false.
+      const finalTranscript = transcript.trim(); // Read the *current* transcript value at this point.
       
-      // Clear the transcript from the hook immediately after capturing its value
-      // to prevent re-processing on subsequent effect runs.
-      clearSpeechRecognitionTranscript();
+      if (finalTranscript) {
+        addMessage('user', finalTranscript);
+        setIsLoadingAiResponse(true);
+        
+        // It's important to clear the transcript from the hook now,
+        // so that if this effect were to run again (e.g. due to other dep changes)
+        // while isRecording is still false, it won't reprocess an old transcript.
+        // Also helps ensure next recording starts fresh.
+        clearSpeechRecognitionTranscript();
 
-      const aiInput: GenerateResponseInput = {
-        spokenInput: trimmedTranscript,
-        language,
-        girlfriendName,
-      };
+        const aiInput: GenerateResponseInput = {
+          spokenInput: finalTranscript,
+          language,
+          girlfriendName,
+        };
 
-      generateResponse(aiInput)
-        .then((output: GenerateResponseOutput) => {
-          addMessage('ai', output.spokenResponse);
-          if (isSpeechSynthesisSupported) {
-            speak(output.spokenResponse, language);
-          } else {
-            toast({ title: 'Unsupported Feature', description: 'Speech synthesis is not supported. AI response shown as text.', variant: 'destructive'});
-          }
-        })
-        .catch((error) => {
-          console.error('AI Error:', error);
-          toast({ title: 'AI Error', description: 'Could not get a response.', variant: 'destructive' });
-          addMessage('ai', `Sorry, I encountered an error: ${error.message || 'Unknown error'}`);
-        })
-        .finally(() => {
-          setIsLoadingAiResponse(false);
-        });
+        generateResponse(aiInput)
+          .then((output: GenerateResponseOutput) => {
+            addMessage('ai', output.spokenResponse);
+            if (isSpeechSynthesisSupported) {
+              speak(output.spokenResponse, language);
+            } else {
+              toast({ title: 'Unsupported Feature', description: 'Speech synthesis is not supported. AI response shown as text.', variant: 'destructive'});
+            }
+          })
+          .catch((error) => {
+            console.error('AI Error:', error);
+            toast({ title: 'AI Error', description: 'Could not get a response.', variant: 'destructive' });
+            addMessage('ai', `Sorry, I encountered an error: ${error.message || 'Unknown error'}`);
+          })
+          .finally(() => {
+            setIsLoadingAiResponse(false);
+          });
+      }
     }
-  }, [
-    isRecording, 
-    transcript, 
+
+    // Update prevIsRecording for the next render.
+    prevIsRecording.current = isRecording;
+
+  }, [ 
+    isRecording, // Primary trigger for this logic
+    // `transcript` is deliberately omitted here to prevent re-runs on interim results.
+    // The effect reads the latest `transcript` when `isRecording` transitions.
     language, 
     girlfriendName, 
-    speak, 
-    toast, 
-    isSpeechSynthesisSupported, 
     addMessage, 
-    clearSpeechRecognitionTranscript
+    clearSpeechRecognitionTranscript, 
+    speak, 
+    isSpeechSynthesisSupported, 
+    toast,
+    setIsLoadingAiResponse 
   ]);
 
 
@@ -129,14 +144,14 @@ export default function GirlfriendGPTPage() {
       </header>
 
       <main className="flex-grow flex flex-col md:flex-row p-4 gap-6 container mx-auto overflow-hidden">
-        <section className="md:w-2/5 lg:w-1/3 xl:w-1/4 md:sticky md:top-24 md:self-start"> {/* Sticky settings panel */}
+        <section className="md:w-2/5 lg:w-1/3 xl:w-1/4 md:sticky md:top-24 md:self-start">
           <ConversationSettings
             name={girlfriendName}
             onNameChange={setGirlfriendName}
             language={language}
             onLanguageChange={(lang) => {
               setLanguage(lang);
-              if(isAiSpeaking) cancelSpeaking(); // Stop speaking if language changes
+              if(isAiSpeaking) cancelSpeaking();
             }}
           />
         </section>
@@ -155,4 +170,3 @@ export default function GirlfriendGPTPage() {
       </main>
     </div>
   );
-}
