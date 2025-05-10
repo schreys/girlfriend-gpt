@@ -10,6 +10,7 @@ interface SpeechRecognitionHook {
   stopListening: () => void;
   error: string | null;
   isSupported: boolean;
+  clearTranscript: () => void;
 }
 
 const useSpeechRecognition = (): SpeechRecognitionHook => {
@@ -96,7 +97,11 @@ const useSpeechRecognition = (): SpeechRecognitionHook => {
     }
   }, [recognition, isListening]);
 
-  return { isListening, transcript, startListening, stopListening, error, isSupported };
+  const clearTranscript = useCallback(() => {
+    setTranscript('');
+  }, []);
+
+  return { isListening, transcript, startListening, stopListening, error, isSupported, clearTranscript };
 };
 
 export default useSpeechRecognition;

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -26,6 +27,7 @@ export default function GirlfriendGPTPage() {
     stopListening,
     error: recognitionError,
     isSupported: isSpeechRecognitionSupported,
+    clearTranscript: clearSpeechRecognitionTranscript,
   } = useSpeechRecognition();
 
   const {
@@ -48,12 +50,12 @@ export default function GirlfriendGPTPage() {
     }
   }, [synthesisError, toast]);
 
-  const addMessage = (sender: 'user' | 'ai', text: string) => {
+  const addMessage = useCallback((sender: 'user' | 'ai', text: string) => {
     setMessages((prevMessages) => [
       ...prevMessages,
       { id: crypto.randomUUID(), sender, text, timestamp: new Date() },
     ]);
-  };
+  }, []);
 
   const handleToggleRecording = useCallback(() => {
     if (!isSpeechRecognitionSupported) {
@@ -70,14 +72,22 @@ export default function GirlfriendGPTPage() {
 
   // Process recognized speech
   useEffect(() => {
-    if (!isRecording && transcript.trim()) {
-      addMessage('user', transcript.trim());
+    const trimmedTranscript = transcript.trim();
+
+    if (!isRecording && trimmedTranscript) {
+      addMessage('user', trimmedTranscript);
       setIsLoadingAiResponse(true);
+      
+      // Clear the transcript from the hook immediately after capturing its value
+      // to prevent re-processing on subsequent effect runs.
+      clearSpeechRecognitionTranscript();
+
       const aiInput: GenerateResponseInput = {
-        spokenInput: transcript.trim(),
+        spokenInput: trimmedTranscript,
         language,
         girlfriendName,
       };
+
       generateResponse(aiInput)
         .then((output: GenerateResponseOutput) => {
           addMessage('ai', output.spokenResponse);
@@ -96,7 +106,17 @@ export default function GirlfriendGPTPage() {
           setIsLoadingAiResponse(false);
         });
     }
-  }, [isRecording, transcript, language, girlfriendName, speak, toast, isSpeechSynthesisSupported]);
+  }, [
+    isRecording, 
+    transcript, 
+    language, 
+    girlfriendName, 
+    speak, 
+    toast, 
+    isSpeechSynthesisSupported, 
+    addMessage, 
+    clearSpeechRecognitionTranscript
+  ]);
 
 
   return (
