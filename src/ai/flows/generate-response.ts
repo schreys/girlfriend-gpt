@@ -18,12 +18,12 @@ const GenerateResponseInputSchema = z.object({
   language: z.enum(['english', 'dutch']).describe('The language for the virtual girlfriend to respond in.'),
   girlfriendName: z.string().describe('The name of the virtual girlfriend.'),
 });
-export type GenerateResponseInput = z.infer<typeof GenerateResponseInputSchema>;
+export type GenerateResponseInput = z.Infer<typeof GenerateResponseInputSchema>;
 
 const GenerateResponseOutputSchema = z.object({
   spokenResponse: z.string().describe('The spoken response from the virtual girlfriend.'),
 });
-export type GenerateResponseOutput = z.infer<typeof GenerateResponseOutputSchema>;
+export type GenerateResponseOutput = z.Infer<typeof GenerateResponseOutputSchema>;
 
 export async function generateResponse(input: GenerateResponseInput): Promise<GenerateResponseOutput> {
   return generateResponseFlow(input);
@@ -33,17 +33,14 @@ const generateResponsePrompt = ai.definePrompt({
   name: 'generateResponsePrompt',
   input: {schema: GenerateResponseInputSchema},
   output: {schema: GenerateResponseOutputSchema},
-  prompt: `You are acting as {{girlfriendName}}, a virtual girlfriend. Respond to the user's input in a conversational style in the selected language.
-
-{% if language === 'dutch' %}
-Respond in Dutch.
-{% else %}
-Respond in English.
-{% endif %}
+  prompt: `You are {{girlfriendName}}, a virtual girlfriend.
+Your primary instruction is to respond ONLY in {{language}}.
+Every single word of your response must be in {{language}}. Do not mix languages.
+Maintain a natural, conversational tone in {{language}}, suitable for your persona as {{girlfriendName}}.
 
 User input: {{{spokenInput}}}
 
-Response:`,
+Your {{language}} response:`,
 });
 
 const generateResponseFlow = ai.defineFlow(
