@@ -69,7 +69,7 @@ export default function GirlfriendGPTPage() {
     } else {
       if (isAiSpeaking) cancelSpeaking();
       setCurrentTranscript(''); 
-      clearSpeechRecognitionTranscript(); // Clear transcripts in hook before starting
+      clearSpeechRecognitionTranscript();
       startListening(language);
     }
   }, [isRecording, startListening, stopListening, language, isSpeechRecognitionSupported, toast, isAiSpeaking, cancelSpeaking, clearSpeechRecognitionTranscript]);
@@ -80,14 +80,14 @@ export default function GirlfriendGPTPage() {
     if (isRecording && interimTranscript) {
       setCurrentTranscript(interimTranscript);
     }
-  }, [isRecording, interimTranscript]);
+  }, [isRecording, interimTranscript, setCurrentTranscript]);
 
-  // Update currentTranscript with final results for display (might be redundant if main effect handles it)
+  // Update currentTranscript with final results for display
   useEffect(() => {
-    if (finalTranscript) { // This will show final transcript as it comes, even before processing
+    if (finalTranscript) { 
       setCurrentTranscript(finalTranscript);
     }
-  }, [finalTranscript]);
+  }, [finalTranscript, setCurrentTranscript]);
 
   // Handle sending message when recording stops and finalTranscript is available
   useEffect(() => {
@@ -95,8 +95,8 @@ export default function GirlfriendGPTPage() {
       const userMessage = finalTranscript.trim();
       addMessage('user', userMessage);
       setIsLoadingAiResponse(true);
-      clearSpeechRecognitionTranscript(); // Clear hook's transcript state
-      setCurrentTranscript(''); // Clear local current transcript for display
+      clearSpeechRecognitionTranscript(); 
+      setCurrentTranscript(''); 
 
       const aiInput: GenerateResponseInput = {
         spokenInput: userMessage,
@@ -122,7 +122,6 @@ export default function GirlfriendGPTPage() {
           setIsLoadingAiResponse(false);
         });
     } else if (!isRecording && (!finalTranscript || finalTranscript.trim() === '')) {
-      // Clear display transcript and hook transcript if recording stopped with no valid input
       setCurrentTranscript('');
       clearSpeechRecognitionTranscript();
     }
@@ -136,7 +135,8 @@ export default function GirlfriendGPTPage() {
     speak,
     isSpeechSynthesisSupported,
     toast,
-    setIsLoadingAiResponse // Added setIsLoadingAiResponse to dependency array
+    setIsLoadingAiResponse,
+    setCurrentTranscript 
   ]);
 
 
@@ -158,7 +158,7 @@ export default function GirlfriendGPTPage() {
             onLanguageChange={(lang) => {
               setLanguage(lang);
               if(isAiSpeaking) cancelSpeaking();
-              if(isRecording) { // If recording, stop and restart with new language
+              if(isRecording) { 
                 stopListening();
                 setCurrentTranscript('');
                 clearSpeechRecognitionTranscript();
@@ -169,7 +169,7 @@ export default function GirlfriendGPTPage() {
         </section>
 
         <section className="flex-grow flex flex-col bg-card rounded-lg shadow-lg overflow-hidden">
-          <ConversationLog messages={messages} girlfriendName={girlfriendName} isLoadingAiResponse={isLoadingAiResponse} currentInterimTranscript={isRecording ? currentTranscript : ''} />
+          <ConversationLog messages={messages} girlfriendName={girlfriendName} isLoadingAiResponse={isLoadingAiResponse} />
           <VoiceControls
             isRecording={isRecording}
             isLoadingAiResponse={isLoadingAiResponse}
