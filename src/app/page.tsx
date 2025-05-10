@@ -17,17 +17,19 @@ export default function GirlfriendGPTPage() {
   const [language, setLanguage] = useState<'english' | 'dutch'>('english');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoadingAiResponse, setIsLoadingAiResponse] = useState(false);
+  const [currentTranscript, setCurrentTranscript] = useState('');
 
   const { toast } = useToast();
 
   const {
     isListening: isRecording,
-    transcript,
     startListening,
     stopListening,
     error: recognitionError,
     isSupported: isSpeechRecognitionSupported,
     clearTranscript: clearSpeechRecognitionTranscript,
+    interimTranscript,
+    finalTranscript,
   } = useSpeechRecognition();
 
   const {
@@ -65,72 +67,76 @@ export default function GirlfriendGPTPage() {
     if (isRecording) {
       stopListening();
     } else {
-      if (isAiSpeaking) cancelSpeaking(); 
+      if (isAiSpeaking) cancelSpeaking();
+      setCurrentTranscript(''); 
+      clearSpeechRecognitionTranscript(); // Clear transcripts in hook before starting
       startListening(language);
     }
-  }, [isRecording, startListening, stopListening, language, isSpeechRecognitionSupported, toast, isAiSpeaking, cancelSpeaking]);
+  }, [isRecording, startListening, stopListening, language, isSpeechRecognitionSupported, toast, isAiSpeaking, cancelSpeaking, clearSpeechRecognitionTranscript]);
 
-  const prevIsRecording = useRef(isRecording);
 
+  // Update currentTranscript with interim results for display
   useEffect(() => {
-    // This effect runs when `isRecording` changes or other stable dependencies change.
-    // It does NOT run when *only* `transcript` changes.
-
-    if (prevIsRecording.current && !isRecording) {
-      // This block executes exactly ONCE when `isRecording` transitions from true to false.
-      const finalTranscript = transcript.trim(); // Read the *current* transcript value at this point.
-      
-      if (finalTranscript) {
-        addMessage('user', finalTranscript);
-        setIsLoadingAiResponse(true);
-        
-        // It's important to clear the transcript from the hook now,
-        // so that if this effect were to run again (e.g. due to other dep changes)
-        // while isRecording is still false, it won't reprocess an old transcript.
-        // Also helps ensure next recording starts fresh.
-        clearSpeechRecognitionTranscript();
-
-        const aiInput: GenerateResponseInput = {
-          spokenInput: finalTranscript,
-          language,
-          girlfriendName,
-        };
-
-        generateResponse(aiInput)
-          .then((output: GenerateResponseOutput) => {
-            addMessage('ai', output.spokenResponse);
-            if (isSpeechSynthesisSupported) {
-              speak(output.spokenResponse, language);
-            } else {
-              toast({ title: 'Unsupported Feature', description: 'Speech synthesis is not supported. AI response shown as text.', variant: 'destructive'});
-            }
-          })
-          .catch((error) => {
-            console.error('AI Error:', error);
-            toast({ title: 'AI Error', description: 'Could not get a response.', variant: 'destructive' });
-            addMessage('ai', `Sorry, I encountered an error: ${error.message || 'Unknown error'}`);
-          })
-          .finally(() => {
-            setIsLoadingAiResponse(false);
-          });
-      }
+    if (isRecording && interimTranscript) {
+      setCurrentTranscript(interimTranscript);
     }
+  }, [isRecording, interimTranscript]);
 
-    // Update prevIsRecording for the next render.
-    prevIsRecording.current = isRecording;
+  // Update currentTranscript with final results for display (might be redundant if main effect handles it)
+  useEffect(() => {
+    if (finalTranscript) { // This will show final transcript as it comes, even before processing
+      setCurrentTranscript(finalTranscript);
+    }
+  }, [finalTranscript]);
 
-  }, [ 
-    isRecording, // Primary trigger for this logic
-    // `transcript` is deliberately omitted here to prevent re-runs on interim results.
-    // The effect reads the latest `transcript` when `isRecording` transitions.
-    language, 
-    girlfriendName, 
-    addMessage, 
-    clearSpeechRecognitionTranscript, 
-    speak, 
-    isSpeechSynthesisSupported, 
+  // Handle sending message when recording stops and finalTranscript is available
+  useEffect(() => {
+    if (!isRecording && finalTranscript && finalTranscript.trim() !== '') {
+      const userMessage = finalTranscript.trim();
+      addMessage('user', userMessage);
+      setIsLoadingAiResponse(true);
+      clearSpeechRecognitionTranscript(); // Clear hook's transcript state
+      setCurrentTranscript(''); // Clear local current transcript for display
+
+      const aiInput: GenerateResponseInput = {
+        spokenInput: userMessage,
+        language,
+        girlfriendName,
+      };
+
+      generateResponse(aiInput)
+        .then((output: GenerateResponseOutput) => {
+          addMessage('ai', output.spokenResponse);
+          if (isSpeechSynthesisSupported) {
+            speak(output.spokenResponse, language);
+          } else {
+            toast({ title: 'Unsupported Feature', description: 'Speech synthesis is not supported. AI response shown as text.', variant: 'destructive'});
+          }
+        })
+        .catch((error) => {
+          console.error('AI Error:', error);
+          toast({ title: 'AI Error', description: 'Could not get a response.', variant: 'destructive' });
+          addMessage('ai', `Sorry, I encountered an error: ${error.message || 'Unknown error'}`);
+        })
+        .finally(() => {
+          setIsLoadingAiResponse(false);
+        });
+    } else if (!isRecording && (!finalTranscript || finalTranscript.trim() === '')) {
+      // Clear display transcript and hook transcript if recording stopped with no valid input
+      setCurrentTranscript('');
+      clearSpeechRecognitionTranscript();
+    }
+  }, [
+    isRecording,
+    finalTranscript,
+    language,
+    girlfriendName,
+    addMessage,
+    clearSpeechRecognitionTranscript,
+    speak,
+    isSpeechSynthesisSupported,
     toast,
-    setIsLoadingAiResponse 
+    setIsLoadingAiResponse // Added setIsLoadingAiResponse to dependency array
   ]);
 
 
@@ -152,12 +158,18 @@ export default function GirlfriendGPTPage() {
             onLanguageChange={(lang) => {
               setLanguage(lang);
               if(isAiSpeaking) cancelSpeaking();
+              if(isRecording) { // If recording, stop and restart with new language
+                stopListening();
+                setCurrentTranscript('');
+                clearSpeechRecognitionTranscript();
+                startListening(lang);
+              }
             }}
           />
         </section>
 
         <section className="flex-grow flex flex-col bg-card rounded-lg shadow-lg overflow-hidden">
-          <ConversationLog messages={messages} girlfriendName={girlfriendName} isLoadingAiResponse={isLoadingAiResponse} />
+          <ConversationLog messages={messages} girlfriendName={girlfriendName} isLoadingAiResponse={isLoadingAiResponse} currentInterimTranscript={isRecording ? currentTranscript : ''} />
           <VoiceControls
             isRecording={isRecording}
             isLoadingAiResponse={isLoadingAiResponse}
@@ -165,6 +177,7 @@ export default function GirlfriendGPTPage() {
             onToggleRecording={handleToggleRecording}
             isSpeechRecognitionSupported={isSpeechRecognitionSupported}
             isSpeechSynthesisSupported={isSpeechSynthesisSupported}
+            currentTranscript={isRecording ? currentTranscript : ''}
           />
         </section>
       </main>
